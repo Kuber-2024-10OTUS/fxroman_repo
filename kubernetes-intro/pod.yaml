@@ -8,10 +8,12 @@ spec:
   - name: web-server
     image: nginx:latest 
     ports:
-    - containerPort: 80
+    - containerPort: 8080
     volumeMounts:
     - name: homework-volume
-      mountPath: /usr/share/nginx/html
+      mountPath: /homework
+    - name: nginx-config
+      mountPath: /etc/nginx/conf.d/
     resources:
       requests:
         memory: "64Mi"
@@ -22,7 +24,7 @@ spec:
     lifecycle:
       preStop:
         exec:
-          command: ["rm", "-f", "/usr/share/nginx/html/index.html"]
+          command: ["rm", "-f", "/homework/index.html"]
     readinessProbe:
       httpGet:
         path: /
@@ -43,3 +45,6 @@ spec:
   volumes:
   - name: homework-volume
     emptyDir: {}
+  - name: nginx-config
+    configMap:
+      name: nginx-config
