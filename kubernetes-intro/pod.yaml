@@ -8,7 +8,7 @@ spec:
   - name: web-server
     image: nginx:latest 
     ports:
-    - containerPort: 8080
+    - containerPort: 8000
     volumeMounts:
     - name: homework-volume
       mountPath: /homework
@@ -28,7 +28,7 @@ spec:
     readinessProbe:
       httpGet:
         path: /
-        port: 80
+        port: 8000
       initialDelaySeconds: 3
       periodSeconds: 3
   initContainers:
