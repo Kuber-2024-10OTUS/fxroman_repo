@@ -1,71 +1,88 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homework-deployment
+  name: my-deployment
   namespace: homework
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: homework-app
+      app: web-server
   template:
     metadata:
       labels:
-        app: homework-app
+        app: web-server
     spec:
       serviceAccountName: monitoring
       containers:
-      - name: web-server
-        image: nginx:latest
-        ports:
-        - containerPort: 8000
-        volumeMounts:
-        - name: homework-pvc-volume
-          mountPath: /homework
-        - name: config-volume
-          mountPath: /homework/conf
-          readOnly: true
-        - name: nginx-config
-          mountPath: /etc/nginx/conf.d/
-        readinessProbe:
-          httpGet:
-            path: /index.html
-            port: 8000
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          requests:
-            memory: "64Mi"
-            cpu: "250m"
-          limits:
-            memory: "128Mi"
-            cpu: "500m"
+        - name: web-server
+          image: nginx
+          ports:
+            - containerPort: 8000
+          volumeMounts:
+            - name: shared-volume
+              mountPath: /homework
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+            - name: my-config
+              mountPath: /homework/conf
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "rm /homework/index.html"]
+          readinessProbe:
+            httpGet:
+              path: /index.html
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
       initContainers:
-      - name: init-container
-        image: busybox:latest
-        command: ["sh", "-c", "wget -O /homework/index.html https://example.com && wget -O /homework/metrics.html https://yandex.ru/support/metrica/general/segmentation-examples.html" ]
-        volumeMounts:
-        - name: homework-pvc-volume
-          mountPath: /homework
+        - name: init-container
+          image: busybox
+          command: ['sh', '-c', 'echo "Hello, World!" > /init/index.html']
+          volumeMounts:
+            - name: shared-volume
+              mountPath: /init
+        - name: curl-container
+          image: curlimages/curl:latest
+          env:
+            - name: CA_CERT
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            - name: TOKEN
+              value: /var/run/secrets/kubernetes.io/serviceaccount/token
+            - name: KUBEAPI
+              value: https://kubernetes.default.svc
+            - name: NAMESPACE
+              value: homework
+          command: [
+            'sh', '-c',
+            'curl --cacert ${CA_CERT} \
+                  --header "Authorization: Bearer $(cat ${TOKEN})" \
+                  -X GET ${KUBEAPI}/apis/metrics.k8s.io/v1beta1/namespaces/${NAMESPACE}/pods \
+                  -o /init/metrics.html'
+          ]
+          volumeMounts:
+            - name: shared-volume
+              mountPath: /init
       volumes:
-      - name: homework-pvc-volume
-        persistentVolumeClaim:
-          claimName: homework-pvc
-      - name: config-volume
-        configMap:
-          name: homework-config
-      - name: nginx-config
-        configMap:
-          name: nginx-config
+        - name: shared-volume
+          persistentVolumeClaim:
+            claimName: my-pvc
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+        - name: my-config
+          configMap:
+            name: my-config
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
-            - matchExpressions:
-              - key: homework
-                operator: In
-                values:
-                - "true"
+              - matchExpressions:
+                  - key: homework
+                    operator: In
+                    values:
+                      - "true"
   strategy:
     type: RollingUpdate
     rollingUpdate:
